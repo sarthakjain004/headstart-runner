@@ -21,6 +21,7 @@ on:
       - "src/headstart/boards/__init__.py"
       - "src/headstart/boards/board_identity.py"
       - "src/headstart/boards/board_operator.py"
+      - "src/headstart/boards/career_fronts.py"
       - "src/headstart/boards/company_name.py"
       - "src/headstart/boards/company_ref.py"
       - "src/headstart/jobs/__init__.py"
@@ -113,6 +114,7 @@ jobs:
             src/headstart/boards/__init__.py
             src/headstart/boards/board_identity.py
             src/headstart/boards/board_operator.py
+            src/headstart/boards/career_fronts.py
             src/headstart/boards/company_name.py
             src/headstart/boards/company_ref.py
             src/headstart/jobs/__init__.py
