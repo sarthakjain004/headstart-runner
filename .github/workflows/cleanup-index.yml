@@ -1,0 +1,148 @@
+name: cleanup-index
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      attempt:
+        description: "Retry counter — set by this workflow re-dispatching itself. Leave blank."
+        required: false
+        default: "1"
+      backfill_from_store:
+        description: "ADR-0104 one-time backfill: fill every null description from the store (~690 MB)."
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: index-compaction
+  cancel-in-progress: false
+
+env:
+  HF_DATASET: imPoseidon/headstart-index
+  HF_SPACE: imPoseidon/headstart-search
+  HF_HUB_DISABLE_XET: "1"
+  RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
+
+defaults:
+  run:
+    shell: quiet-step {0}
+
+jobs:
+  window:
+    runs-on: ubuntu-latest
+    env:
+      CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      proceed: ${{ steps.wait.outputs.proceed }}
+      core_sha: ${{ steps.runner-setup.outputs.core-sha }}
+    steps:
+      - &checkout
+        name: Checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+        run: |
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - name: Wait for pipeline
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTEMPT: ${{ github.event.inputs.attempt || '1' }}
+          BACKFILL: ${{ github.event.inputs.backfill_from_store || 'false' }}
+        run: bash .github/steps/cleanup-index/wait-for-pipeline.sh
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  cleanup:
+    needs: window
+    if: needs.window.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CORE_REF: ${{ needs.window.outputs.core_sha }}
+    timeout-minutes: 90
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[embed]" "huggingface_hub<2"
+      - name: Fetch index
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: bash .github/steps/cleanup-index/fetch-index.sh
+      - name: Prune
+        run: python -m headstart.ingest.index prune --apply
+      - name: Backfill
+        if: inputs.backfill_from_store == 'true'
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -m headstart.ingest.state_fetch 'data/descriptions/*'
+          python -m headstart.ingest.index backfill-from-store --apply
+          du -sh data/lancedb
+      - name: Compact
+        run: python -m headstart.ingest.index compact
+      - name: Compact store
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: bash .github/steps/cleanup-index/compact-store.sh
+      - name: Publish
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: bash .github/steps/cleanup-index/publish.sh
+      - name: Restart Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python .github/steps/restart-space.py
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  handback:
+    needs: [window, cleanup]
+    if: >-
+      ${{ !cancelled() && (needs.window.outputs.proceed == 'true'
+      || needs.window.result == 'failure') }}
+    runs-on: ubuntu-latest
+    env:
+      CORE_REF: ${{ needs.window.outputs.core_sha }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - name: Dispatch pipeline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steps/cleanup-index/dispatch-pipeline.sh
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown

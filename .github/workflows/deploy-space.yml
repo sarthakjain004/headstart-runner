@@ -1,0 +1,171 @@
+name: deploy-space
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/hf-space/**"
+      - "config/**"
+      - "PRIVACY.md"
+      - ".github/steps/deploy-space/**"
+      - "src/headstart/ui/**"
+      - "src/headstart/__init__.py"
+      - "src/headstart/embedding_conventions.py"
+      - "src/headstart/llm_router.py"
+      - "src/headstart/log.py"
+      - "src/headstart/alerts/__init__.py"
+      - "src/headstart/alerts/access.py"
+      - "src/headstart/alerts/application_tracker.py"
+      - "src/headstart/alerts/identity.py"
+      - "src/headstart/alerts/store.py"
+      - "src/headstart/boards/__init__.py"
+      - "src/headstart/boards/board_identity.py"
+      - "src/headstart/boards/board_operator.py"
+      - "src/headstart/boards/company_name.py"
+      - "src/headstart/boards/company_ref.py"
+      - "src/headstart/jobs/__init__.py"
+      - "src/headstart/jobs/experience.py"
+      - "src/headstart/jobs/job.py"
+      - "src/headstart/jobs/location.py"
+      - "src/headstart/jobs/requisition_copies.py"
+      - "src/headstart/jobs/salary.py"
+      - "src/headstart/jobs/stated_end_date.py"
+      - "src/headstart/jobs/tech_skills.py"
+      - "src/headstart/jobs/work_authorization.py"
+      - "src/headstart/mcp_protocol/**"
+      - "src/headstart/search_filters/**"
+      - "src/headstart/serving/**"
+      - "src/headstart/space_mcp/**"
+      - "src/headstart/trends/**"
+      - "!src/headstart/space_mcp/__main__.py"
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [core-push]
+
+permissions:
+  contents: read
+
+env:
+  RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
+
+defaults:
+  run:
+    shell: quiet-step {0}
+
+jobs:
+  gate:
+    if: >-
+      github.event_name == 'repository_dispatch'
+      && github.event.client_payload.ref == 'refs/heads/main'
+      || github.event_name == 'workflow_dispatch'
+      || github.event_name == 'push' && vars.CORE_REPO == ''
+    runs-on: ubuntu-latest
+    env:
+      CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.paths.outputs.run }}
+      core_sha: ${{ steps.runner-setup.outputs.core-sha }}
+    steps:
+      - &checkout
+        name: Checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+        run: |
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - name: Check paths
+        id: paths
+        uses: ./.github/actions/match-paths
+        with:
+          ssh-key: ${{ secrets.CORE_DEPLOY_KEY }}
+          paths: |
+            deploy/hf-space/**
+            config/**
+            PRIVACY.md
+            .github/steps/deploy-space/**
+            src/headstart/ui/**
+            src/headstart/__init__.py
+            src/headstart/embedding_conventions.py
+            src/headstart/llm_router.py
+            src/headstart/log.py
+            src/headstart/alerts/__init__.py
+            src/headstart/alerts/access.py
+            src/headstart/alerts/application_tracker.py
+            src/headstart/alerts/identity.py
+            src/headstart/alerts/store.py
+            src/headstart/boards/__init__.py
+            src/headstart/boards/board_identity.py
+            src/headstart/boards/board_operator.py
+            src/headstart/boards/company_name.py
+            src/headstart/boards/company_ref.py
+            src/headstart/jobs/__init__.py
+            src/headstart/jobs/experience.py
+            src/headstart/jobs/job.py
+            src/headstart/jobs/location.py
+            src/headstart/jobs/requisition_copies.py
+            src/headstart/jobs/salary.py
+            src/headstart/jobs/stated_end_date.py
+            src/headstart/jobs/tech_skills.py
+            src/headstart/jobs/work_authorization.py
+            src/headstart/mcp_protocol/**
+            src/headstart/search_filters/**
+            src/headstart/serving/**
+            src/headstart/space_mcp/**
+            src/headstart/trends/**
+            !src/headstart/space_mcp/__main__.py
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  push-space:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CORE_REF: ${{ needs.gate.outputs.core_sha }}
+    concurrency:
+      group: deploy-space-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.ref || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/headstart/ui/app/package-lock.json
+      - name: Build UI
+        run: bash .github/steps/deploy-space/build_ui.sh
+      - name: Install dependencies
+        run: pip install "huggingface_hub<2"
+      - name: Publish build
+        id: build
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python .github/steps/deploy-space/publish_build.py
+      - name: Publish Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          BUILD_REVISION: ${{ steps.build.outputs.revision }}
+        run: python .github/steps/deploy-space/publish_space.py
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown

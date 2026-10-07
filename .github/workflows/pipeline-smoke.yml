@@ -1,0 +1,153 @@
+name: pipeline-smoke
+
+run-name: >-
+  ${{ github.event_name == 'repository_dispatch'
+  && format('pipeline-smoke {0}', github.event.client_payload.sha)
+  || format('pipeline-smoke {0} {1}', github.event_name, github.ref_name) }}
+
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [core-push]
+  push:
+    paths:
+      - "src/headstart/ingest/**"
+      - ".github/workflows/pipeline-smoke.yml"
+      - ".github/steps/pipeline-smoke/**"
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.12.11"
+  RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
+
+defaults:
+  run:
+    shell: quiet-step {0}
+
+jobs:
+  gate:
+    if: >-
+      github.event_name == 'repository_dispatch'
+      && github.event.client_payload.sha != '0000000000000000000000000000000000000000'
+      || github.event_name == 'workflow_dispatch'
+      || github.event_name == 'push' && vars.CORE_REPO == ''
+    runs-on: ubuntu-latest
+    env:
+      CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.paths.outputs.run }}
+      core_sha: ${{ steps.runner-setup.outputs.core-sha }}
+    steps:
+      - &checkout
+        name: Checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+        run: |
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - name: Check paths
+        id: paths
+        uses: ./.github/actions/match-paths
+        with:
+          ssh-key: ${{ secrets.CORE_DEPLOY_KEY }}
+          paths: |
+            src/headstart/ingest/**
+            .github/workflows/pipeline-smoke.yml
+            .github/steps/pipeline-smoke/**
+            pyproject.toml
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  smoke:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CORE_REF: ${{ needs.gate.outputs.core_sha }}
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          pip install "uv==$UV_VERSION"
+          uv pip install --system --torch-backend cpu -e ".[embed]" "huggingface_hub<2"
+      - name: Cache model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/huggingface/hub
+          key: hf-model-nomic-embed-text-v1.5-e9b6763023c6
+      - name: Cycle 1 fixture
+        run: python .github/steps/pipeline-smoke/cycle-1-fixture.py
+      - name: Cycle 1 join
+        run: |
+          python -m headstart.ingest.scrape_join
+          python -m headstart.ingest.filter_tech
+      - name: Embed baseline
+        run: python -m headstart.ingest.embed_run --source data/jobs/tech --outdir data/embeddings/mono
+      - name: Plan
+        run: python -m headstart.ingest.embed_plan --max-shards 3 --target-seconds 20
+      - name: Embed shards
+        run: bash .github/steps/pipeline-smoke/embed-shards.sh
+      - name: Merge
+        run: python -m headstart.ingest.embed_merge
+      - name: Check embed
+        run: python .github/steps/pipeline-smoke/check-embed.py
+      - name: Cycle 1 sync
+        run: python -m headstart.ingest.index sync
+      - name: Cycle 1 indexes
+        run: python -m headstart.ingest.index refresh-indexes
+      - name: Check index
+        run: python .github/steps/pipeline-smoke/check-index.py
+      - name: Check prune
+        run: bash .github/steps/pipeline-smoke/check-prune.sh
+      - name: Cycle 2 fixture
+        run: python .github/steps/pipeline-smoke/cycle-2-fixture.py
+      - name: Cycle 2 join
+        run: |
+          python -m headstart.ingest.scrape_join
+          python -m headstart.ingest.filter_tech
+      - name: Cycle 2 sync
+        run: python -m headstart.ingest.index sync
+      - name: Cycle 2 indexes
+        run: python -m headstart.ingest.index refresh-indexes
+      - name: Check cycle 2
+        run: python .github/steps/pipeline-smoke/check-cycle-2.py
+      - name: Cycle 3 fixture
+        run: python .github/steps/pipeline-smoke/cycle-3-fixture.py
+      - name: Cycle 3 join
+        run: |
+          python -m headstart.ingest.scrape_join
+          python -m headstart.ingest.filter_tech
+      - name: Cycle 3 sync
+        run: python -m headstart.ingest.index sync
+      - name: Cycle 3 indexes
+        run: python -m headstart.ingest.index refresh-indexes
+      - name: Check cycle 3
+        run: python .github/steps/pipeline-smoke/check-cycle-3.py
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown

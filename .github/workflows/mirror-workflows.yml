@@ -1,0 +1,56 @@
+name: mirror-workflows
+
+on:
+  repository_dispatch:
+    types: [core-push]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-workflows
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: vars.CORE_REPO != '' && (github.event_name == 'workflow_dispatch' || github.event.client_payload.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          token: ${{ secrets.RUNNER_MIRROR_TOKEN }}
+      - name: Checkout Core
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+          CORE_REF: main
+        run: |
+          mkdir core
+          cd core
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - run: python core/scripts/runner/mirror_workflows.py --core core --runner .
+      - run: git add -A .github/workflows
+      - id: staged
+        run: git diff --cached --quiet || echo "changed=true" >> "$GITHUB_OUTPUT"
+      - if: steps.staged.outputs.changed == 'true'
+        run: 'git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "mirror: Core $(git -C core rev-parse --short=7 HEAD)" && git push'
