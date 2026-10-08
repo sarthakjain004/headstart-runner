@@ -79,7 +79,7 @@ jobs:
           python -m headstart.ingest.restate_run
           --encode-budget-seconds "${{ inputs.encode_budget_seconds || '1800' }}"
       - name: Compare
-        run: python scripts/eval/compare_restated_trends.py --live data/state --restated data/restated --max-median-gap 0.02
+        run: python scripts/eval/compare_restated_trends.py --live data/state --restated data/restated --max-newest-gap 0.02
       - name: Publish
         if: env.CORE_REF == 'main'
         env:
