@@ -1,6 +1,8 @@
 name: restate-trends
 
 on:
+  schedule:
+    - cron: "17 2 * * *"
   workflow_dispatch:
     inputs:
       encode_budget_seconds:
@@ -10,6 +12,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: restate-trends
+  cancel-in-progress: false
 
 env:
   HF_DATASET: imPoseidon/headstart-index
@@ -71,9 +77,14 @@ jobs:
       - name: Restate
         run: >-
           python -m headstart.ingest.restate_run
-          --encode-budget-seconds "${{ inputs.encode_budget_seconds }}"
+          --encode-budget-seconds "${{ inputs.encode_budget_seconds || '1800' }}"
       - name: Compare
-        run: python scripts/eval/compare_restated_trends.py --live data/state --restated data/restated
+        run: python scripts/eval/compare_restated_trends.py --live data/state --restated data/restated --max-median-gap 0.02
+      - name: Publish
+        if: env.CORE_REF == 'main'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python -m headstart.ingest.restate_publish "$HF_DATASET"
       - name: Upload results
         if: always()
         uses: ./.github/actions/put-artifact
