@@ -10,6 +10,7 @@ on:
       - ".github/steps/deploy-space/**"
       - "src/headstart/ui/**"
       - "src/headstart/__init__.py"
+      - "src/headstart/config_files.py"
       - "src/headstart/embedding_conventions.py"
       - "src/headstart/llm_router.py"
       - "src/headstart/log.py"
@@ -103,6 +104,7 @@ jobs:
             .github/steps/deploy-space/**
             src/headstart/ui/**
             src/headstart/__init__.py
+            src/headstart/config_files.py
             src/headstart/embedding_conventions.py
             src/headstart/llm_router.py
             src/headstart/log.py
