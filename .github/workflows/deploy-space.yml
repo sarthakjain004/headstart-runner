@@ -35,6 +35,10 @@ on:
       - "src/headstart/jobs/company_sections.py"
       - "src/headstart/jobs/tech_skills.py"
       - "src/headstart/jobs/work_authorization.py"
+      - "src/headstart/logos/__init__.py"
+      - "src/headstart/logos/logo_catalog.py"
+      - "src/headstart/logos/logo_ledger.py"
+      - "src/headstart/logos/logo_packs.py"
       - "src/headstart/mcp_protocol/**"
       - "src/headstart/search_filters/**"
       - "src/headstart/serving/**"
@@ -130,6 +134,10 @@ jobs:
             src/headstart/jobs/company_sections.py
             src/headstart/jobs/tech_skills.py
             src/headstart/jobs/work_authorization.py
+            src/headstart/logos/__init__.py
+            src/headstart/logos/logo_catalog.py
+            src/headstart/logos/logo_ledger.py
+            src/headstart/logos/logo_packs.py
             src/headstart/mcp_protocol/**
             src/headstart/search_filters/**
             src/headstart/serving/**

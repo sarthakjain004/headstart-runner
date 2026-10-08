@@ -1,0 +1,75 @@
+name: logos
+
+on:
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+    inputs:
+      budget_minutes:
+        description: "Minutes to spend sweeping (at most 300; the job stops at 330)."
+        required: false
+        default: "45"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: logos
+  cancel-in-progress: false
+
+env:
+  HF_DATASET: imPoseidon/headstart-index
+  HF_HUB_DISABLE_XET: "1"
+  UV_VERSION: "0.12.11"
+  RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
+
+defaults:
+  run:
+    shell: quiet-step {0}
+
+jobs:
+  sweep:
+    runs-on: ubuntu-24.04
+    env:
+      CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
+      BUDGET_MINUTES: ${{ inputs.budget_minutes || '45' }}
+    timeout-minutes: 330
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+        run: |
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install "uv==$UV_VERSION"
+          uv pip install --system -e ".[logos]" "huggingface_hub<2"
+      - name: Fetch state
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python -m headstart.ingest.state_fetch 'data/state/company_directory.json' 'data/logos/*'
+      - name: Sweep
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: bash .github/steps/logos/sweep.sh
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
