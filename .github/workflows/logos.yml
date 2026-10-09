@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: logos
@@ -67,6 +68,15 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python -m headstart.ingest.state_fetch 'data/state/company_directory.json' 'data/state/board_priority.csv' 'data/logos/*'
+      - name: Network setup
+        continue-on-error: true
+        timeout-minutes: 10
+        run: bash .github/steps/pipeline/network-setup.sh
+      - name: Fetch extra logos
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steps/newest-artifact.sh data-scrape-extra data/scrape/extra-fragment
       - name: Sweep
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
