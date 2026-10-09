@@ -62,11 +62,11 @@ jobs:
           python-version: "3.12"
       - run: |
           pip install "uv==$UV_VERSION"
-          uv pip install --system -e ".[logos]" "huggingface_hub<2"
+          uv pip install --system -e ".[logos,scrape]" "huggingface_hub<2"
       - name: Fetch state
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: python -m headstart.ingest.state_fetch 'data/state/company_directory.json' 'data/logos/*'
+        run: python -m headstart.ingest.state_fetch 'data/state/company_directory.json' 'data/state/board_priority.csv' 'data/logos/*'
       - name: Sweep
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
