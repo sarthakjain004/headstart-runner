@@ -23,6 +23,7 @@ env:
   UV_VERSION: "0.12.11"
   ARROW_DEFAULT_MEMORY_POOL: system
   RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
+  RESTATE_SHARDS: "4"
 
 defaults:
   run:
@@ -34,6 +35,10 @@ jobs:
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
     timeout-minutes: 240
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - name: Checkout
         shell: bash
@@ -76,8 +81,63 @@ jobs:
             'data/descriptions/*' 'data/lancedb/*'
       - name: Restate
         run: >-
-          python -m headstart.ingest.restate_run
+          python -m headstart.ingest.restate_run --shard "${{ matrix.shard }}/$RESTATE_SHARDS"
+          --out "data/restated-part/${{ matrix.shard }}"
           --encode-budget-seconds "${{ inputs.encode_budget_seconds || '1800' }}"
+      - name: Upload part
+        uses: ./.github/actions/put-artifact
+        with:
+          name: data-restate-part-${{ matrix.shard }}
+          path: data/restated-part/${{ matrix.shard }}
+          retention-days: 1
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  publish:
+    needs: restate
+    runs-on: ubuntu-24.04
+    env:
+      CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+        run: |
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install "uv==$UV_VERSION"
+          uv pip install --system --torch-backend cpu -e ".[embed]" "huggingface_hub<2"
+      - name: Fetch state
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python -m headstart.ingest.state_fetch 'data/state/*'
+      - name: Download parts
+        uses: ./.github/actions/get-artifact
+        with:
+          pattern: data-restate-part-*
+          path: data/restated-part
+      - name: Merge
+        run: python -m headstart.ingest.restate_shard merge data/restated-part/*/ --out data/restated
       - name: Compare
         run: python scripts/eval/compare_restated_trends.py --live data/state --restated data/restated --max-newest-gap 0.02
       - name: Publish
