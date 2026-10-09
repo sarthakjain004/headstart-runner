@@ -29,15 +29,14 @@ defaults:
     shell: quiet-step {0}
 
 jobs:
-  restate:
+  pin:
     runs-on: ubuntu-24.04
-    env: &core-ref
+    env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
-    timeout-minutes: 240
-    strategy:
-      fail-fast: true
-      matrix:
-        shard: [0, 1, 2, 3]
+    timeout-minutes: 10
+    outputs:
+      core_sha: ${{ steps.runner-setup.outputs.core-sha }}
+      core_ref: ${{ env.CORE_REF }}
     steps:
       - &checkout
         name: Checkout
@@ -63,6 +62,22 @@ jobs:
       - &runner-setup
         id: runner-setup
         uses: ./.github/actions/runner-setup
+      - &teardown
+        if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  restate:
+    needs: pin
+    runs-on: ubuntu-24.04
+    env: &core-ref
+      CORE_REF: ${{ needs.pin.outputs.core_sha }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - *checkout
+      - *runner-setup
       - &setup-python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -94,11 +109,9 @@ jobs:
           name: data-restate-part-${{ strategy.job-index }}
           path: data/restated-part/${{ strategy.job-index }}
           retention-days: 1
-      - &teardown
-        if: always() && steps.runner-setup.outcome == 'success'
-        uses: ./.github/actions/runner-teardown
+      - *teardown
   publish:
-    needs: restate
+    needs: [pin, restate]
     runs-on: ubuntu-24.04
     env: *core-ref
     timeout-minutes: 60
@@ -121,7 +134,7 @@ jobs:
       - name: Compare
         run: python scripts/eval/compare_restated_trends.py --live data/state --restated data/restated --max-newest-gap 0.02
       - name: Publish
-        if: env.CORE_REF == 'main'
+        if: needs.pin.outputs.core_ref == 'main'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python -m headstart.ingest.restate_publish "$HF_DATASET"
