@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "15 * * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "full: the usual run; check: a short diagnostic run"
+        type: choice
+        options: [full, check]
+        default: full
 
 permissions:
   contents: read
@@ -57,13 +63,26 @@ jobs:
       - name: Network setup
         timeout-minutes: 10
         run: bash .github/steps/pipeline/network-setup.sh
+      - name: Check
+        if: inputs.mode == 'check'
+        timeout-minutes: 20
+        run: bash .github/steps/extra-scrape/check.sh
+      - name: Upload check
+        if: always() && inputs.mode == 'check'
+        uses: ./.github/actions/put-artifact
+        with:
+          name: data-check
+          path: data/scrape/check
+          retention-days: 7
       - name: Fetch carry
+        if: inputs.mode != 'check'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/steps/extra-scrape/fetch-carry.sh
       - name: Scrape
         id: scrape
+        if: inputs.mode != 'check'
         timeout-minutes: 125
         run: bash .github/steps/extra-scrape/scrape.sh
       - name: Upload results
@@ -74,10 +93,10 @@ jobs:
           path: data/scrape/extra-fragment
           retention-days: 2
       - name: Pack carry
-        if: always()
+        if: always() && inputs.mode != 'check'
         run: bash .github/steps/extra-scrape/pack-carry.sh
       - name: Upload carry
-        if: always()
+        if: always() && inputs.mode != 'check'
         uses: ./.github/actions/put-artifact
         with:
           name: data-extra-carry
