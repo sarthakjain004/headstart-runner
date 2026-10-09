@@ -162,7 +162,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
-    timeout-minutes: 90
+    timeout-minutes: 80
     steps:
       - *checkout
       - id: runner-setup
@@ -177,7 +177,7 @@ jobs:
       - name: Scrape
         id: scrape
         continue-on-error: true
-        timeout-minutes: 75
+        timeout-minutes: 65
         run: bash .github/steps/pipeline/extra-scrape.sh
       - name: Upload results
         if: steps.scrape.outcome == 'success'
@@ -189,7 +189,7 @@ jobs:
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   join:
-    needs: [scrape-plan, scrape, extra-scrape]
+    needs: [scrape-plan, scrape]
     if: always() && needs.scrape-plan.outputs.run == 'true'
     runs-on: ubuntu-24.04
     env:
@@ -225,12 +225,11 @@ jobs:
         with:
           pattern: data-scrape-[0-9]*
           path: data/scrape/fragments
-      - name: Download extra results
+      - name: Fetch extra results
         continue-on-error: true
-        uses: ./.github/actions/get-artifact
-        with:
-          name: data-scrape-extra
-          path: data/scrape/fragments/data-scrape-extra
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steps/pipeline/fetch-extra-fragment.sh
       - name: Join
         run: >-
           python -m headstart.ingest.scrape_join
