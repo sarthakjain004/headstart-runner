@@ -1,0 +1,87 @@
+name: extra-scrape
+
+on:
+  schedule:
+    - cron: "15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: extra-scrape
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.12.11"
+  RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
+
+defaults:
+  run:
+    shell: quiet-step {0}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-24.04
+    env:
+      CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
+    timeout-minutes: 145
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+        run: |
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[scrape]"
+      - name: Network setup
+        timeout-minutes: 10
+        run: bash .github/steps/pipeline/network-setup.sh
+      - name: Fetch carry
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steps/extra-scrape/fetch-carry.sh
+      - name: Scrape
+        id: scrape
+        timeout-minutes: 125
+        run: bash .github/steps/extra-scrape/scrape.sh
+      - name: Upload results
+        if: steps.scrape.outcome == 'success'
+        uses: ./.github/actions/put-artifact
+        with:
+          name: data-scrape-extra
+          path: data/scrape/extra-fragment
+          retention-days: 2
+      - name: Pack carry
+        if: always()
+        run: bash .github/steps/extra-scrape/pack-carry.sh
+      - name: Upload carry
+        if: always()
+        uses: ./.github/actions/put-artifact
+        with:
+          name: data-extra-carry
+          path: data/scrape/carry
+          retention-days: 2
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
