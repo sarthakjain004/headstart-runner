@@ -156,8 +156,40 @@ jobs:
           retention-days: 1
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
+  extra-scrape:
+    needs: scrape-plan
+    if: needs.scrape-plan.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
+    timeout-minutes: 90
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[scrape]"
+      - name: Network setup
+        timeout-minutes: 10
+        run: bash .github/steps/pipeline/network-setup.sh
+      - name: Scrape
+        id: scrape
+        continue-on-error: true
+        timeout-minutes: 75
+        run: bash .github/steps/pipeline/extra-scrape.sh
+      - name: Upload results
+        if: steps.scrape.outcome == 'success'
+        uses: ./.github/actions/put-artifact
+        with:
+          name: data-scrape-extra
+          path: data/scrape/extra-fragment
+          retention-days: 1
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
   join:
-    needs: [scrape-plan, scrape]
+    needs: [scrape-plan, scrape, extra-scrape]
     if: always() && needs.scrape-plan.outputs.run == 'true'
     runs-on: ubuntu-24.04
     env:
@@ -193,6 +225,12 @@ jobs:
         with:
           pattern: data-scrape-[0-9]*
           path: data/scrape/fragments
+      - name: Download extra results
+        continue-on-error: true
+        uses: ./.github/actions/get-artifact
+        with:
+          name: data-scrape-extra
+          path: data/scrape/fragments/data-scrape-extra
       - name: Join
         run: >-
           python -m headstart.ingest.scrape_join
