@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
-    timeout-minutes: 145
+    timeout-minutes: 325
     steps:
       - name: Checkout
         shell: bash
@@ -83,7 +83,7 @@ jobs:
       - name: Scrape
         id: scrape
         if: inputs.mode != 'check'
-        timeout-minutes: 125
+        timeout-minutes: 305
         run: bash .github/steps/extra-scrape/scrape.sh
       - name: Upload results
         if: steps.scrape.outcome == 'success'
