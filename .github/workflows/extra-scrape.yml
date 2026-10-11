@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "full: the usual run; check: a short diagnostic run"
+        description: "full: the usual run; fast: the quicker run; check: a short diagnostic run"
         type: choice
-        options: [full, check]
+        options: [full, fast, check]
         default: full
 
 permissions:
@@ -83,6 +83,8 @@ jobs:
       - name: Scrape
         id: scrape
         if: inputs.mode != 'check'
+        env:
+          MODE: ${{ inputs.mode }}
         timeout-minutes: 305
         run: bash .github/steps/extra-scrape/scrape.sh
       - name: Upload results
