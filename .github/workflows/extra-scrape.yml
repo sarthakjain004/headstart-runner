@@ -9,7 +9,7 @@ on:
         description: "full: the usual run; fast: the quicker run; check: a short diagnostic run"
         type: choice
         options: [full, fast, check]
-        default: full
+        default: fast
 
 permissions:
   contents: read
