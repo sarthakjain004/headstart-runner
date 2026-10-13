@@ -295,7 +295,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
-    timeout-minutes: 118
+    timeout-minutes: 128
     outputs:
       compact_due: ${{ steps.compaction.outputs.due }}
     steps:
@@ -344,6 +344,12 @@ jobs:
       - name: Stamp time
         if: needs.scrape-plan.outputs.run == 'true'
         run: echo "HEADSTART_RUN_TS=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" >> "$GITHUB_ENV"
+      - name: Record ids
+        id: record-ids
+        if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python -m headstart.ingest.indexnow_pending before --ids "$RUNNER_TEMP/served-ids.json"
       - name: Sync
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         run: >-
@@ -373,6 +379,11 @@ jobs:
         if: needs.scrape-plan.outputs.run == 'true'
         continue-on-error: true
         run: python -m headstart.ingest.company_directory
+      - name: List changes
+        if: needs.scrape-plan.outputs.run == 'true' && steps.record-ids.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python -m headstart.ingest.indexnow_pending after --ids "$RUNNER_TEMP/served-ids.json"
       - name: Publish
         id: publish
         if: needs.scrape-plan.outputs.run == 'true'
