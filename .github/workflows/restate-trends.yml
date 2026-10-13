@@ -98,11 +98,13 @@ jobs:
           python -m headstart.ingest.state_fetch 'data/facts/*' 'data/state/*' \
             'data/descriptions/*' 'data/lancedb/*'
       - name: Restate
+        env:
+          ENCODE_BUDGET_SECONDS: ${{ inputs.encode_budget_seconds || '1800' }}
         run: >-
           python -m headstart.ingest.restate_run
           --shard "${{ strategy.job-index }}/${{ strategy.job-total }}"
           --out "data/restated-part/${{ strategy.job-index }}"
-          --encode-budget-seconds "${{ inputs.encode_budget_seconds || '1800' }}"
+          --encode-budget-seconds "$ENCODE_BUDGET_SECONDS"
       - name: Upload part
         uses: ./.github/actions/put-artifact
         with:
