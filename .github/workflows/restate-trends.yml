@@ -65,11 +65,39 @@ jobs:
       - &teardown
         if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
-  restate:
+  fetch:
     needs: pin
     runs-on: ubuntu-24.04
     env: &core-ref
       CORE_REF: ${{ needs.pin.outputs.core_sha }}
+    timeout-minutes: 45
+    steps:
+      - *checkout
+      - *runner-setup
+      - &setup-python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: pip install "uv==$UV_VERSION" && uv pip install --system -e . "huggingface_hub<2"
+      - name: Fetch state
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python -m headstart.ingest.state_fetch 'data/facts/*' 'data/state/*' 'data/descriptions/*' 'data/lancedb/*'
+      - name: Upload state
+        uses: ./.github/actions/put-artifact
+        with:
+          name: data-restate-state
+          path: |
+            data/facts
+            data/state
+            data/descriptions
+            data/lancedb
+          retention-days: 1
+      - *teardown
+  restate:
+    needs: [pin, fetch]
+    runs-on: ubuntu-24.04
+    env: *core-ref
     timeout-minutes: 240
     strategy:
       fail-fast: true
@@ -78,10 +106,7 @@ jobs:
     steps:
       - *checkout
       - *runner-setup
-      - &setup-python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-        with:
-          python-version: "3.12"
+      - *setup-python
       - &install
         run: |
           pip install "uv==$UV_VERSION"
@@ -91,12 +116,11 @@ jobs:
         with:
           path: ~/.cache/huggingface/hub
           key: hf-model-jobbert-v2-a480476925ab
-      - name: Fetch state
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          python -m headstart.ingest.state_fetch 'data/facts/*' 'data/state/*' \
-            'data/descriptions/*' 'data/lancedb/*'
+      - name: Download state
+        uses: ./.github/actions/get-artifact
+        with:
+          name: data-restate-state
+          path: data
       - name: Restate
         env:
           ENCODE_BUDGET_SECONDS: ${{ inputs.encode_budget_seconds || '1800' }}
