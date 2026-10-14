@@ -11,6 +11,9 @@ on:
       chained:
         description: internal - set by the previous run's hand-off; leave false for manual runs
         default: "false"
+      handback_run:
+        description: internal - the run that handed back to this one; leave blank
+        default: ""
 
 permissions:
   contents: read
@@ -75,6 +78,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GH_TOKEN: ${{ github.token }}
+          HANDBACK_RUN: ${{ github.event.inputs.handback_run }}
         run: bash .github/steps/pipeline/gate.sh
       - if: steps.gate.outputs.run == 'true'
         run: pip install -e . "huggingface_hub<2"
