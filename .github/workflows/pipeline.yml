@@ -189,7 +189,7 @@ jobs:
       - name: Fetch state
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: bash .github/steps/pipeline/fetch-join-state.sh
+        run: bash .github/steps/pipeline/fetch-join-state.sh start
       - name: Download results
         if: needs.scrape-plan.outputs.count != '0'
         continue-on-error: true
@@ -197,6 +197,8 @@ jobs:
         with:
           pattern: data-scrape-[0-9]*
           path: data/scrape/fragments
+      - name: Await state
+        run: bash .github/steps/pipeline/fetch-join-state.sh wait
       - name: Fetch extra results
         continue-on-error: true
         env:
