@@ -151,6 +151,13 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: bash .github/steps/pipeline/scrape.sh
         timeout-minutes: 81
+      - name: Filter
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: python -m headstart.ingest.filter_tech shard "data/jobs/shard-${SHARD}"
       - name: Upload results
         if: always()
         uses: ./.github/actions/put-artifact
