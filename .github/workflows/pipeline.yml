@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
-    timeout-minutes: 94
+    timeout-minutes: 97
     strategy:
       fail-fast: false
       max-parallel: 15
@@ -154,7 +154,7 @@ jobs:
       - name: Filter
         if: always()
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 3
         env:
           SHARD: ${{ matrix.shard }}
         run: python -m headstart.ingest.filter_tech shard "data/jobs/shard-${SHARD}"
