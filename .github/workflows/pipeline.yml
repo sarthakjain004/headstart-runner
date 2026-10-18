@@ -43,6 +43,7 @@ jobs:
     outputs:
       run: ${{ steps.gate.outputs.run }}
       resume: ${{ steps.gate.outputs.resume }}
+      resume_fragments: ${{ steps.gate.outputs.resume_fragments }}
       count: ${{ steps.plan.outputs.count || '0' }}
       shards: ${{ steps.plan.outputs.shards || '[]' }}
       shard_count: ${{ steps.plan.outputs.shard_count || '0' }}
@@ -351,9 +352,7 @@ jobs:
           run-id: ${{ needs.scrape-plan.outputs.resume }}
       - name: Merge
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
-        run: |
-          python -m headstart.ingest.embed_merge \
-            ${{ needs.join.outputs.shard_count && format('--expect-shards {0}', needs.join.outputs.shard_count) || '' }}
+        run: python -m headstart.ingest.embed_merge ${{ needs.scrape-plan.outputs.resume != '' && format('--expect-shards {0} --strict-shards', needs.scrape-plan.outputs.resume_fragments) || format('--expect-shards {0}', needs.join.outputs.shard_count) }}
       - name: Update metadata
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         continue-on-error: true
