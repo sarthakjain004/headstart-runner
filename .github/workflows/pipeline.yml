@@ -81,27 +81,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HANDBACK_RUN: ${{ github.event.inputs.handback_run }}
         run: bash .github/steps/pipeline/gate.sh
-      - if: steps.gate.outputs.run == 'true'
+      - if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == ''
         run: pip install -e . "huggingface_hub<2"
       - name: Fetch state
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == ''
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: bash .github/steps/pipeline/fetch-plan-state.sh
       - name: Fetch optional state
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == ''
         continue-on-error: true
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python -m headstart.ingest.state_fetch data/state/known_names.csv
       - name: Plan
         id: plan
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == ''
         env:
           PLAN_LIMIT: ${{ github.event.inputs.max_boards || '80000' }}
         run: bash .github/steps/pipeline/plan.sh
       - name: Upload plan
-        if: steps.gate.outputs.run == 'true' && steps.plan.outputs.count != '0'
+        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == '' && steps.plan.outputs.count != '0'
         uses: ./.github/actions/put-artifact
         with:
           name: data-scrape-plan
@@ -170,7 +170,7 @@ jobs:
         uses: ./.github/actions/runner-teardown
   join:
     needs: [scrape-plan, scrape]
-    if: always() && needs.scrape-plan.outputs.run == 'true'
+    if: always() && needs.scrape-plan.outputs.run == 'true' && needs.scrape-plan.outputs.resume == ''
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
@@ -338,6 +338,7 @@ jobs:
         with:
           name: data-join
           path: data
+          run-id: ${{ needs.scrape-plan.outputs.resume }}
       - name: Download results
         if: needs.scrape-plan.outputs.run == 'true' && needs.join.outputs.count != '0'
         continue-on-error: true
@@ -345,11 +346,12 @@ jobs:
         with:
           pattern: data-embed-[0-9]*
           path: data/embeddings/fragments
+          run-id: ${{ needs.scrape-plan.outputs.resume }}
       - name: Merge
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         run: |
           python -m headstart.ingest.embed_merge \
-            --expect-shards "${{ needs.join.outputs.shard_count }}"
+            ${{ needs.join.outputs.shard_count && format('--expect-shards {0}', needs.join.outputs.shard_count) || '' }}
       - name: Update metadata
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         continue-on-error: true
@@ -459,27 +461,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MERGE: ${{ needs.merge.result }}
         run: bash .github/steps/pipeline/dispatch-next-run.sh
-      - if: always() && steps.runner-setup.outcome == 'success'
-        uses: ./.github/actions/runner-teardown
-  resume-merge:
-    needs: [scrape-plan]
-    if: ${{ needs.scrape-plan.outputs.resume != '' }}
-    runs-on: ubuntu-24.04
-    env:
-      CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - *checkout
-      - id: runner-setup
-        uses: ./.github/actions/runner-setup
-      - name: Re-run failed jobs
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RESUME: ${{ needs.scrape-plan.outputs.resume }}
-        run: gh run rerun "$RESUME" --failed -R "$GITHUB_REPOSITORY"
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   request-compaction:
