@@ -340,7 +340,9 @@ jobs:
           path: data
           run-id: ${{ needs.scrape-plan.outputs.resume }}
       - name: Download results
-        if: needs.scrape-plan.outputs.run == 'true' && needs.join.outputs.count != '0'
+        if: >-
+          ${{ needs.scrape-plan.outputs.run == 'true'
+          && (needs.scrape-plan.outputs.resume != '' || needs.join.outputs.count != '0') }}
         continue-on-error: true
         uses: ./.github/actions/get-artifact
         with:
