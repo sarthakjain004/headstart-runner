@@ -42,6 +42,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       run: ${{ steps.gate.outputs.run }}
+      resume: ${{ steps.gate.outputs.resume }}
       count: ${{ steps.plan.outputs.count || '0' }}
       shards: ${{ steps.plan.outputs.shards || '[]' }}
       shard_count: ${{ steps.plan.outputs.shard_count || '0' }}
@@ -458,6 +459,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MERGE: ${{ needs.merge.result }}
         run: bash .github/steps/pipeline/dispatch-next-run.sh
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  resume-merge:
+    needs: [scrape-plan]
+    if: ${{ needs.scrape-plan.outputs.resume != '' }}
+    runs-on: ubuntu-24.04
+    env:
+      CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - name: Re-run failed jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESUME: ${{ needs.scrape-plan.outputs.resume }}
+        run: gh run rerun "$RESUME" --failed -R "$GITHUB_REPOSITORY"
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   request-compaction:
