@@ -82,7 +82,7 @@ jobs:
           CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
           REQUEST_SHA: ${{ inputs.sha }}
         run: bash .github/steps/sweep/request.sh
-      - run: pip install -e ".[scrape,discovery]"
+      - run: pip install -e ".[scrape,discovery]" pyarrow
       - name: Network setup
         continue-on-error: true
         timeout-minutes: 10
