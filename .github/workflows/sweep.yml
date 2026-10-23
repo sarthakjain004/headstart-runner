@@ -1,0 +1,109 @@
+name: sweep
+
+run-name: sweep ${{ inputs.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: the Core commit holding the request
+        required: true
+      shards:
+        description: parallel runners, 1-8, each its own egress
+        default: "1"
+
+permissions:
+  contents: read
+
+env:
+  RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
+
+defaults:
+  run:
+    shell: quiet-step {0}
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CORE_REF: ${{ (vars.CORE_REPO == '' && github.sha) || 'main' }}
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - &checkout
+        name: Checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+        run: |
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - uses: ./.github/actions/runner-setup
+      - id: plan
+        env:
+          SHA: ${{ inputs.sha }}
+          SHARDS: ${{ inputs.shards }}
+        run: '[[ "$SHA" =~ ^[0-9a-f]{40}$ && "$SHARDS" =~ ^[1-8]$ ]] && echo "shards=[$(seq -s, 0 $((SHARDS - 1)))]" >> "$GITHUB_OUTPUT"'
+      - if: always()
+        uses: ./.github/actions/runner-teardown
+  sweep:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    env:
+      CORE_REF: ${{ (vars.CORE_REPO == '' && github.sha) || 'main' }}
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Request
+        env:
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+          REQUEST_SHA: ${{ inputs.sha }}
+        run: bash .github/steps/sweep/request.sh
+      - run: pip install -e ".[scrape,discovery]"
+      - name: Network setup
+        continue-on-error: true
+        timeout-minutes: 10
+        run: bash .github/steps/pipeline/network-setup.sh
+      - name: Sweep
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ inputs.shards }}
+        timeout-minutes: 320
+        run: 'python3 scripts/discover/cdx_dump.py --request "$RUNNER_TEMP/request.json" --out "$RUNNER_TEMP/reply" --shard "$SHARD" --shards "$SHARDS"'
+      - name: Pack
+        id: pack
+        if: always() && steps.runner-setup.outcome == 'success'
+        run: bash .github/steps/sweep/pack.sh
+      - name: Upload
+        if: always() && steps.pack.outputs.file != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: reply-${{ matrix.shard }}
+          path: ${{ steps.pack.outputs.file }}
+          retention-days: 3
+          compression-level: 0
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown

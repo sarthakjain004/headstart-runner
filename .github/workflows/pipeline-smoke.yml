@@ -33,6 +33,7 @@ jobs:
     if: >-
       github.event_name == 'repository_dispatch'
       && github.event.client_payload.sha != '0000000000000000000000000000000000000000'
+      && !startsWith(github.event.client_payload.ref, 'refs/heads/sweep/')
       || github.event_name == 'workflow_dispatch'
       || github.event_name == 'push' && vars.CORE_REPO == ''
     runs-on: ubuntu-latest

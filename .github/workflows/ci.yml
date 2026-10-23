@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout
         shell: bash
