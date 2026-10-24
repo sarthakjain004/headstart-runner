@@ -94,7 +94,7 @@ jobs:
         continue-on-error: true
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: python -m headstart.ingest.state_fetch data/state/known_names.csv
+        run: python -m headstart.ingest.state_fetch --for scrape-plan-names
       - name: Plan
         id: plan
         if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == ''

@@ -18,6 +18,7 @@ on:
       - "src/headstart/alerts/access.py"
       - "src/headstart/alerts/application_tracker.py"
       - "src/headstart/alerts/identity.py"
+      - "src/headstart/alerts/saved_sets.py"
       - "src/headstart/alerts/store.py"
       - "src/headstart/boards/__init__.py"
       - "src/headstart/boards/board_identity.py"
@@ -118,6 +119,7 @@ jobs:
             src/headstart/alerts/access.py
             src/headstart/alerts/application_tracker.py
             src/headstart/alerts/identity.py
+            src/headstart/alerts/saved_sets.py
             src/headstart/alerts/store.py
             src/headstart/boards/__init__.py
             src/headstart/boards/board_identity.py
