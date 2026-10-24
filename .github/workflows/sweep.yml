@@ -9,7 +9,7 @@ on:
         description: the Core commit holding the request
         required: true
       shards:
-        description: shards, 1-8, each its own runner and egress, at most 2 at a time
+        description: shards, 1-8, each its own runner and egress
         default: "1"
 
 permissions:
@@ -66,7 +66,6 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.shards) }}
     env:
