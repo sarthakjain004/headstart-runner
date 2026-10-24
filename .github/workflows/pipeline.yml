@@ -89,12 +89,6 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: bash .github/steps/pipeline/fetch-plan-state.sh
-      - name: Fetch optional state
-        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == ''
-        continue-on-error: true
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: python -m headstart.ingest.state_fetch --for scrape-plan-names
       - name: Plan
         id: plan
         if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == ''
