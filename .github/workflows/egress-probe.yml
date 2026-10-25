@@ -53,6 +53,6 @@ jobs:
       - name: Probe
         env:
           REPLICA: ${{ matrix.replica }}
-        run: python -u .github/steps/egress-probe/probe.py "probe-${{ matrix.replica }}.json"
+        run: python -u .github/steps/egress-probe/probe.py
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
