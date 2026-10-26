@@ -18,6 +18,7 @@ on:
       - "src/headstart/alerts/access.py"
       - "src/headstart/alerts/account_refusals.py"
       - "src/headstart/alerts/application_tracker.py"
+      - "src/headstart/alerts/cadence.py"
       - "src/headstart/alerts/identity.py"
       - "src/headstart/alerts/resume_account_copies.py"
       - "src/headstart/alerts/saved_jobs.py"
@@ -122,6 +123,7 @@ jobs:
             src/headstart/alerts/access.py
             src/headstart/alerts/account_refusals.py
             src/headstart/alerts/application_tracker.py
+            src/headstart/alerts/cadence.py
             src/headstart/alerts/identity.py
             src/headstart/alerts/resume_account_copies.py
             src/headstart/alerts/saved_jobs.py

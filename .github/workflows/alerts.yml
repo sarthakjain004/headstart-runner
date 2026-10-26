@@ -1,10 +1,9 @@
 name: email-alerts
 
 on:
-  workflow_run:
-    workflows: ["nightly-pipeline"]
-    types: [completed]
   workflow_dispatch: {}
+  schedule:
+    - cron: "50 * * * *"
 
 permissions:
   contents: read
@@ -22,9 +21,6 @@ defaults:
 
 jobs:
   digest:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
