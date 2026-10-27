@@ -101,7 +101,11 @@ jobs:
       - name: Build UI
         working-directory: src/headstart/ui/app
         run: bash "$GITHUB_WORKSPACE/.github/steps/ci/build-ui.sh"
+      - name: Install test tools
+        run: npm ci --prefix tests/mcp_conformance --ignore-scripts
       - name: Tests (pytest)
+        env:
+          HEADSTART_MCP_CONFORMANCE: required
         run: |
           python -c "import pyarrow, lancedb"
           pytest -n auto
