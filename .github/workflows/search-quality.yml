@@ -2,13 +2,15 @@ name: search-quality
 
 on:
   workflow_dispatch: {}
+  schedule:
+    - cron: "40 2 * * *"
 
 permissions:
   contents: read
 
 concurrency:
-  group: search-quality
-  cancel-in-progress: true
+  group: search-quality-${{ github.event_name }}
+  cancel-in-progress: false
 
 env:
   RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
@@ -19,6 +21,7 @@ defaults:
 
 jobs:
   check:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
@@ -55,5 +58,47 @@ jobs:
           PYTHONPATH: src
           SPACE_URL: ${{ secrets.SPACE_URL || vars.SPACE_URL }}
         run: python -u scripts/eval/relevance_benchmark.py run --gate --wait-ready 900 --base "$SPACE_URL"
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  links:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
+          CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+        run: |
+          git -c init.defaultBranch=main init -q .
+          d=$(mktemp -d)
+          trap 'rm -rf "$d"' EXIT
+          if [ -n "$CORE_DEPLOY_KEY" ]; then
+            printf '%s\n' "$CORE_DEPLOY_KEY" > "$d/key"
+            chmod 600 "$d/key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$d/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$d/known_hosts"
+            git remote add origin "git@github.com:$REPOSITORY.git"
+          else
+            git remote add origin "https://github.com/$REPOSITORY.git"
+          fi
+          git fetch --quiet --no-tags --depth=1 origin "$CORE_REF"
+          git checkout --quiet --detach FETCH_HEAD
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Probe
+        env:
+          PYTHONPATH: src
+          SPACE_URL: ${{ secrets.SPACE_URL || vars.SPACE_URL }}
+          SUBSCRIBERS_REPO: ${{ secrets.SUBSCRIBERS_REPO || vars.SUBSCRIBERS_REPO }}
+          SUBSCRIBERS_TOKEN: ${{ secrets.SUBSCRIBERS_TOKEN }}
+        run: python -u .github/steps/search-quality/probe-links.py
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
