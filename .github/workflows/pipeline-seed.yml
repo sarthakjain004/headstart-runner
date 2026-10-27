@@ -3,15 +3,14 @@ name: pipeline-seed
 on:
   schedule:
     - cron: "30 * * * *"
+  workflow_run:
+    workflows: [nightly-pipeline, cleanup-index]
+    types: [completed]
   workflow_dispatch: {}
 
 permissions:
   contents: read
   actions: write
-
-concurrency:
-  group: pipeline-seed
-  cancel-in-progress: false
 
 env:
   RUNLOG_KEY: ${{ secrets.RUNLOG_KEY }}
@@ -22,6 +21,12 @@ defaults:
 
 jobs:
   seed:
+    if: >-
+      ${{ github.event_name != 'workflow_run'
+      || github.event.workflow_run.conclusion != 'cancelled' }}
+    concurrency:
+      group: pipeline-seed
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
