@@ -79,7 +79,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.feed == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 240
     env:
       CORE_REF: ${{ needs.plan.outputs.core-sha }}
     steps:
@@ -157,7 +157,7 @@ jobs:
     needs: [plan, probe]
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 240
     env:
       CORE_REF: ${{ needs.plan.outputs.core-sha }}
     steps:
@@ -167,7 +167,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - run: pip install "uv==$UV_VERSION" && uv pip install --system -e .
+      - run: pip install "uv==$UV_VERSION" && uv pip install --system -e ".[scrape,discovery]"
       - name: Download
         uses: ./.github/actions/get-artifact
         with:
@@ -181,8 +181,12 @@ jobs:
           name: ledgers
           path: data/validate/liveness
           retention-days: 14
+      - name: Follow
+        timeout-minutes: 120
+        run: 'python -u scripts/validate/ledger_refresh.py followups --held "$RUNNER_TEMP/held.txt"'
       - name: Land
         env:
+          HELD: ${{ runner.temp }}/held.txt
           REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
           CORE_LEDGER_TOKEN: ${{ secrets.CORE_LEDGER_TOKEN }}
         run: bash .github/steps/ledger-refresh/land.sh
