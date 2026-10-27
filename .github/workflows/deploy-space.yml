@@ -18,13 +18,17 @@ on:
       - "src/headstart/alerts/access.py"
       - "src/headstart/alerts/account_refusals.py"
       - "src/headstart/alerts/application_tracker.py"
+      - "src/headstart/alerts/bot.py"
       - "src/headstart/alerts/cadence.py"
       - "src/headstart/alerts/identity.py"
+      - "src/headstart/alerts/registry.py"
       - "src/headstart/alerts/resume_account_copies.py"
       - "src/headstart/alerts/saved_jobs.py"
       - "src/headstart/alerts/saved_sets.py"
       - "src/headstart/alerts/session_floor.py"
       - "src/headstart/alerts/store.py"
+      - "src/headstart/alerts/telegram.py"
+      - "src/headstart/alerts/telegram_bot_api.py"
       - "src/headstart/boards/__init__.py"
       - "src/headstart/boards/board_identity.py"
       - "src/headstart/boards/board_operator.py"
@@ -124,13 +128,17 @@ jobs:
             src/headstart/alerts/access.py
             src/headstart/alerts/account_refusals.py
             src/headstart/alerts/application_tracker.py
+            src/headstart/alerts/bot.py
             src/headstart/alerts/cadence.py
             src/headstart/alerts/identity.py
+            src/headstart/alerts/registry.py
             src/headstart/alerts/resume_account_copies.py
             src/headstart/alerts/saved_jobs.py
             src/headstart/alerts/saved_sets.py
             src/headstart/alerts/session_floor.py
             src/headstart/alerts/store.py
+            src/headstart/alerts/telegram.py
+            src/headstart/alerts/telegram_bot_api.py
             src/headstart/boards/__init__.py
             src/headstart/boards/board_identity.py
             src/headstart/boards/board_operator.py
