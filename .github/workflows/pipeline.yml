@@ -128,10 +128,12 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[scrape]"
       - name: Network setup
+        id: network
         continue-on-error: true
         timeout-minutes: 10
         run: bash .github/steps/pipeline/network-setup.sh
       - name: Download plan
+        id: plan-download
         continue-on-error: true
         uses: ./.github/actions/get-artifact
         with:
@@ -148,6 +150,7 @@ jobs:
         run: bash .github/steps/pipeline/scrape.sh
         timeout-minutes: 81
       - name: Filter
+        id: filter
         if: always()
         continue-on-error: true
         timeout-minutes: 3
@@ -161,6 +164,13 @@ jobs:
           name: data-scrape-${{ matrix.shard }}
           path: data/jobs/shard-${{ matrix.shard }}
           retention-days: 1
+      - name: Outcomes
+        if: always() && steps.runner-setup.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+          STEPS: ${{ toJSON(steps) }}
+        run: python -m headstart.ingest.run_verdict outcomes
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   join:
@@ -194,6 +204,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: bash .github/steps/pipeline/fetch-join-state.sh start
       - name: Download results
+        id: results
         if: needs.scrape-plan.outputs.count != '0'
         continue-on-error: true
         uses: ./.github/actions/get-artifact
@@ -203,6 +214,7 @@ jobs:
       - name: Await state
         run: bash .github/steps/pipeline/fetch-join-state.sh wait
       - name: Fetch extra results
+        id: extra
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -218,12 +230,15 @@ jobs:
       - name: Update priority
         run: python -m headstart.ingest.update_ledgers priority
       - name: Update costs
+        id: costs
         continue-on-error: true
         run: python -m headstart.ingest.update_ledgers cost
       - name: Update failures
+        id: failures
         continue-on-error: true
         run: python -m headstart.ingest.update_ledgers failures
       - name: Update gaps
+        id: gaps
         continue-on-error: true
         run: python -m headstart.ingest.update_ledgers gap
       - name: Plan embed
@@ -246,6 +261,13 @@ jobs:
             data/descriptions
             data/facts
           retention-days: 1
+      - name: Outcomes
+        if: always() && steps.runner-setup.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+          STEPS: ${{ toJSON(steps) }}
+        run: python -m headstart.ingest.run_verdict outcomes
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   embed:
@@ -335,6 +357,7 @@ jobs:
           path: data
           run-id: ${{ needs.scrape-plan.outputs.resume }}
       - name: Download results
+        id: results
         if: >-
           ${{ needs.scrape-plan.outputs.run == 'true'
           && (needs.scrape-plan.outputs.resume != '' || needs.join.outputs.count != '0') }}
@@ -348,6 +371,7 @@ jobs:
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         run: python -m headstart.ingest.embed_merge ${{ needs.scrape-plan.outputs.resume != '' && format('--expect-shards {0} --strict-shards', needs.scrape-plan.outputs.resume_fragments) || format('--expect-shards {0}', needs.join.outputs.shard_count) }}
       - name: Update metadata
+        id: metadata
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 35
@@ -372,6 +396,7 @@ jobs:
           CORPUS: ${{ steps.corpus.outcome }}
         run: bash .github/steps/pipeline/prune.sh
       - name: Prune store
+        id: store-prune
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         continue-on-error: true
         run: python -m headstart.ingest.embed_prune --apply
@@ -382,15 +407,18 @@ jobs:
           path: ~/.cache/huggingface/hub
           key: hf-model-jobbert-v2-a480476925ab
       - name: Update trends
+        id: trends
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 20
         run: python -m headstart.ingest.role_trends
       - name: Update directory
+        id: directory
         if: needs.scrape-plan.outputs.run == 'true'
         continue-on-error: true
         run: python -m headstart.ingest.company_directory
       - name: List changes
+        id: list-changes
         if: needs.scrape-plan.outputs.run == 'true' && steps.record-ids.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 5
@@ -408,7 +436,17 @@ jobs:
         env:
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
         run: python .github/steps/pipeline/report.py
+      - name: Upload report
+        id: report-upload
+        if: always() && needs.scrape-plan.outputs.run == 'true'
+        continue-on-error: true
+        uses: ./.github/actions/put-artifact
+        with:
+          name: merge-report
+          path: ${{ runner.temp }}/merge-report
+          retention-days: 7
       - name: Reclaim storage
+        id: reclaim
         if: always() && needs.scrape-plan.outputs.run == 'true'
         continue-on-error: true
         timeout-minutes: 10
@@ -433,6 +471,13 @@ jobs:
         run: |
           echo "::error::the embedding store failed its consistency check and was not uploaded (ADR-0392)"
           exit 1
+      - name: Outcomes
+        if: always() && steps.runner-setup.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+          STEPS: ${{ toJSON(steps) }}
+        run: python -m headstart.ingest.run_verdict outcomes
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   chain:
@@ -456,6 +501,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MERGE: ${{ needs.merge.result }}
         run: bash .github/steps/pipeline/dispatch-next-run.sh
+      - name: Dispatch digest
+        id: digest
+        if: always() && needs.merge.result == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steps/pipeline/dispatch-digest.sh
+      - name: Outcomes
+        if: always() && steps.runner-setup.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+          STEPS: ${{ toJSON(steps) }}
+        run: python3 -m headstart.ingest.run_verdict outcomes
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   request-compaction:
@@ -477,5 +536,62 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/steps/pipeline/dispatch-compaction.sh
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  notify:
+    needs: [scrape-plan, scrape, join, embed, merge, chain, request-compaction]
+    if: ${{ always() && needs.scrape-plan.outputs.run != 'false' }}
+    runs-on: ubuntu-24.04
+    env:
+      CORE_REF: ${{ needs.scrape-plan.outputs.core_sha || 'main' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Find previous
+        id: previous
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steps/pipeline/previous-verdict.sh
+      - name: Download previous
+        if: steps.previous.outputs.run != ''
+        continue-on-error: true
+        uses: ./.github/actions/get-artifact
+        with:
+          name: run-verdict
+          path: verdict/previous
+          run-id: ${{ steps.previous.outputs.run }}
+      - name: Download report
+        if: needs.merge.result != 'skipped'
+        continue-on-error: true
+        uses: ./.github/actions/get-artifact
+        with:
+          name: merge-report
+          path: verdict/report
+      - name: Notify
+        id: notify
+        env:
+          PYTHONPATH: src
+          GH_TOKEN: ${{ github.token }}
+          NEEDS: ${{ toJSON(needs) }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPS_TELEGRAM_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
+        run: python -m headstart.ingest.run_verdict notify --report verdict/report/report.json --previous verdict/previous/verdict.json --out verdict/now/verdict.json
+      - name: Upload verdict
+        if: always()
+        uses: ./.github/actions/put-artifact
+        with:
+          name: run-verdict
+          path: verdict/now
+          retention-days: 7
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
