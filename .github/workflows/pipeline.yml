@@ -322,7 +322,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
-    timeout-minutes: 148
+    timeout-minutes: 168
     outputs:
       compact_due: ${{ steps.compaction.outputs.due }}
       restarted: ${{ steps.restart.outputs.restarted }}
@@ -495,10 +495,13 @@ jobs:
       - name: Restart Space
         id: restart
         if: needs.scrape-plan.outputs.run == 'true'
+        timeout-minutes: 20
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SPACE_URL: ${{ secrets.SPACE_URL || vars.SPACE_URL }}
           RESTART_EVERY_MIN: "90"
+          RELOAD_UNTIL_MIN: "360"
+          INDEX_RELOAD_TOKEN: ${{ secrets.INDEX_RELOAD_TOKEN }}
         run: python .github/steps/restart-space.py
       - name: Check publication
         if: always() && needs.scrape-plan.outputs.run == 'true' && steps.publish.outputs.store_valid == 'false'
@@ -591,6 +594,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/steps/pipeline/dispatch-digest.sh
+      - name: Dispatch quality check
+        id: quality
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run search-quality.yml -R "$GITHUB_REPOSITORY"
       - name: Outcomes
         if: always() && steps.runner-setup.outcome == 'success'
         continue-on-error: true
