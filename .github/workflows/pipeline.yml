@@ -9,9 +9,6 @@ on:
       chained:
         description: internal - set by the previous run's hand-off; leave false for manual runs
         default: "false"
-      handback_run:
-        description: internal - the run that handed back to this one; leave blank
-        default: ""
 
 permissions:
   contents: read
@@ -79,7 +76,6 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          HANDBACK_RUN: ${{ github.event.inputs.handback_run }}
         run: bash .github/steps/pipeline/gate.sh
       - if: steps.gate.outputs.run == 'true' && steps.gate.outputs.resume == ''
         run: pip install -e . "huggingface_hub<2"
@@ -166,10 +162,9 @@ jobs:
       - name: Outcomes
         if: always() && steps.runner-setup.outcome == 'success'
         continue-on-error: true
-        env:
-          PYTHONPATH: src
-          STEPS: ${{ toJSON(steps) }}
-        run: python -m headstart.ingest.run_verdict outcomes
+        uses: ./.github/actions/outcomes
+        with:
+          steps: ${{ toJSON(steps) }}
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   join:
@@ -263,10 +258,9 @@ jobs:
       - name: Outcomes
         if: always() && steps.runner-setup.outcome == 'success'
         continue-on-error: true
-        env:
-          PYTHONPATH: src
-          STEPS: ${{ toJSON(steps) }}
-        run: python -m headstart.ingest.run_verdict outcomes
+        uses: ./.github/actions/outcomes
+        with:
+          steps: ${{ toJSON(steps) }}
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   embed:
@@ -322,6 +316,9 @@ jobs:
   merge:
     needs: [scrape-plan, join, embed]
     if: always() && needs.scrape-plan.outputs.run == 'true'
+    concurrency:
+      group: dataset-writer
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
@@ -329,6 +326,7 @@ jobs:
     outputs:
       compact_due: ${{ steps.compaction.outputs.due }}
       restarted: ${{ steps.restart.outputs.restarted }}
+      restarted_at: ${{ steps.restart.outputs.restarted_at }}
     steps:
       - *checkout
       - id: runner-setup
@@ -342,6 +340,21 @@ jobs:
         run: |
           pip install "uv==$UV_VERSION"
           uv pip install --system --torch-backend cpu -e ".[embed]" "huggingface_hub<2"
+      - name: Cache key
+        id: fragments
+        if: needs.scrape-plan.outputs.run == 'true'
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python -m headstart.ingest.state_fetch --cache-key >> "$GITHUB_OUTPUT"
+      - name: Restore cache
+        id: restore-cache
+        if: needs.scrape-plan.outputs.run == 'true' && steps.fragments.outputs.key != ''
+        continue-on-error: true
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ steps.fragments.outputs.paths }}
+          key: ${{ steps.fragments.outputs.key }}
       - name: Fetch state
         if: needs.scrape-plan.outputs.run == 'true'
         env:
@@ -495,10 +508,9 @@ jobs:
       - name: Outcomes
         if: always() && steps.runner-setup.outcome == 'success'
         continue-on-error: true
-        env:
-          PYTHONPATH: src
-          STEPS: ${{ toJSON(steps) }}
-        run: python -m headstart.ingest.run_verdict outcomes
+        uses: ./.github/actions/outcomes
+        with:
+          steps: ${{ toJSON(steps) }}
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   chain:
@@ -522,20 +534,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MERGE: ${{ needs.merge.result }}
         run: bash .github/steps/pipeline/dispatch-next-run.sh
-      - name: Dispatch digest
-        id: digest
-        if: always() && needs.merge.result == 'success' && needs.merge.outputs.restarted == 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash .github/steps/pipeline/dispatch-digest.sh
       - name: Outcomes
         if: always() && steps.runner-setup.outcome == 'success'
         continue-on-error: true
-        env:
-          PYTHONPATH: src
-          STEPS: ${{ toJSON(steps) }}
-        run: python3 -m headstart.ingest.run_verdict outcomes
+        uses: ./.github/actions/outcomes
+        with:
+          steps: ${{ toJSON(steps) }}
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   request-compaction:
@@ -559,8 +563,44 @@ jobs:
         run: bash .github/steps/pipeline/dispatch-compaction.sh
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
+  digest:
+    needs: [scrape-plan, merge]
+    if: ${{ !cancelled() && needs.merge.result == 'success' && needs.merge.outputs.restarted == 'true' }}
+    runs-on: ubuntu-24.04
+    env:
+      CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - name: Await boot
+        id: boot
+        continue-on-error: true
+        timeout-minutes: 25
+        env:
+          PYTHONPATH: src
+          AFTER: ${{ needs.merge.outputs.restarted_at }}
+        run: python3 -m headstart.space_boot wait --after "$AFTER" --timeout-min 20
+      - name: Dispatch digest
+        id: dispatch
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steps/pipeline/dispatch-digest.sh
+      - name: Outcomes
+        if: always() && steps.runner-setup.outcome == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/outcomes
+        with:
+          steps: ${{ toJSON(steps) }}
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
   notify:
-    needs: [scrape-plan, scrape, join, embed, merge, chain, request-compaction]
+    needs: [scrape-plan, scrape, join, embed, merge, chain, request-compaction, digest]
     if: ${{ always() && needs.scrape-plan.outputs.run != 'false' }}
     runs-on: ubuntu-24.04
     env:
@@ -613,6 +653,7 @@ jobs:
         continue-on-error: true
         env:
           PYTHONPATH: src
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SUBSCRIBERS_REPO: ${{ secrets.SUBSCRIBERS_REPO || vars.SUBSCRIBERS_REPO }}
           SUBSCRIBERS_TOKEN: ${{ secrets.SUBSCRIBERS_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

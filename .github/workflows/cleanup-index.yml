@@ -5,10 +5,6 @@ on:
     - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
-      attempt:
-        description: "Retry counter — set by this workflow re-dispatching itself. Leave blank."
-        required: false
-        default: "1"
       backfill_from_store:
         description: "ADR-0104 one-time backfill: fill every null description from the store (~690 MB)."
         required: false
@@ -36,12 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
-    timeout-minutes: 60
+    timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     outputs:
-      proceed: ${{ steps.wait.outputs.proceed }}
       core_sha: ${{ steps.runner-setup.outputs.core-sha }}
     steps:
       - &checkout
@@ -67,18 +61,13 @@ jobs:
           git checkout --quiet --detach FETCH_HEAD
       - id: runner-setup
         uses: ./.github/actions/runner-setup
-      - name: Wait for pipeline
-        id: wait
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ATTEMPT: ${{ github.event.inputs.attempt || '1' }}
-          BACKFILL: ${{ github.event.inputs.backfill_from_store || 'false' }}
-        run: bash .github/steps/cleanup-index/wait-for-pipeline.sh
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   cleanup:
     needs: window
-    if: needs.window.outputs.proceed == 'true'
+    concurrency:
+      group: dataset-writer
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     env:
       CORE_REF: ${{ needs.window.outputs.core_sha }}
@@ -126,9 +115,7 @@ jobs:
         uses: ./.github/actions/runner-teardown
   handback:
     needs: [window, cleanup]
-    if: >-
-      ${{ !cancelled() && (needs.window.outputs.proceed == 'true'
-      || needs.window.result == 'failure') }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     env:
       CORE_REF: ${{ needs.window.outputs.core_sha }}
