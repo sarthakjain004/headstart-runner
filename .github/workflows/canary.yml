@@ -51,12 +51,15 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - run: pip install -e ".[scrape]" "playwright>=1.40"
+      - run: pip install -e ".[scrape,discovery]"
       - name: Network setup
         timeout-minutes: 10
         run: bash .github/steps/pipeline/network-setup.sh
       - name: Check
         timeout-minutes: 70
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPS_TELEGRAM_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
         run: python -u scripts/validate/scraper_canary.py --browser
       - name: Upload report
         if: always()
