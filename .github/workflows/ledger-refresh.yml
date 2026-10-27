@@ -8,6 +8,10 @@ on:
       shards:
         description: shards, 1-8, each its own runner and egress
         default: "4"
+      feeders:
+        description: also re-fold the discovery feeders first
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,6 +39,7 @@ jobs:
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
       count: ${{ steps.plan.outputs.count }}
+      feed: ${{ steps.feed.outputs.feed }}
       core-sha: ${{ steps.runner-setup.outputs.core-sha }}
     steps:
       - &checkout
@@ -64,10 +69,43 @@ jobs:
         env:
           SHARDS: ${{ inputs.shards || '4' }}
         run: '[[ "$SHARDS" =~ ^[1-8]$ ]] && echo "count=$SHARDS" >> "$GITHUB_OUTPUT" && echo "shards=[$(seq -s, 0 $((SHARDS - 1)))]" >> "$GITHUB_OUTPUT"'
+      - id: feed
+        env:
+          ASKED: ${{ inputs.feeders || false }}
+        run: '{ [ "$ASKED" = true ] || [ "$(date -u +%d)" = 01 ]; } && echo "feed=true" >> "$GITHUB_OUTPUT" || echo "feed=false" >> "$GITHUB_OUTPUT"'
       - if: always()
         uses: ./.github/actions/runner-teardown
-  probe:
+  feed:
     needs: plan
+    if: needs.plan.outputs.feed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CORE_REF: ${{ needs.plan.outputs.core-sha }}
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: pip install "uv==$UV_VERSION" && uv pip install --system -e ".[scrape,discovery]"
+      - name: Feed
+        continue-on-error: true
+        run: python -u scripts/discover/refresh_feeders.py
+      - name: Upload
+        uses: ./.github/actions/put-artifact
+        with:
+          name: pool
+          path: |
+            data/wayback-ats
+            data/ats-tenants-merged
+          retention-days: 3
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  probe:
+    needs: [plan, feed]
+    if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
@@ -84,6 +122,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install "uv==$UV_VERSION" && uv pip install --system -e ".[scrape,discovery]" "huggingface_hub<2"
+      - name: Download
+        if: needs.feed.result == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/get-artifact
+        with:
+          name: pool
+          path: data
       - name: Fetch state
         continue-on-error: true
         env:
