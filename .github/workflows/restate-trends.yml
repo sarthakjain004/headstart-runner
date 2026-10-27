@@ -159,6 +159,9 @@ jobs:
         run: python -m headstart.ingest.restate_shard merge data/restated-part/*/ --out data/restated
       - name: Compare
         run: python scripts/eval/compare_restated_trends.py --live data/state --restated data/restated --max-newest-gap 0.02
+      - name: Reconcile
+        continue-on-error: true
+        run: python scripts/validate/reconcile_trends.py --ledger data/state --restated data/restated --directory data/state/company_directory.json --out data/restated/reconciliation.json
       - name: Publish
         if: needs.pin.outputs.core_ref == 'main'
         env:
