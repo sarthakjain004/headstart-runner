@@ -1,8 +1,6 @@
 name: nightly-pipeline
 
 on:
-  schedule:
-    - cron: "30 * * * *"
   workflow_dispatch:
     inputs:
       max_boards:
@@ -47,6 +45,7 @@ jobs:
       count: ${{ steps.plan.outputs.count || '0' }}
       shards: ${{ steps.plan.outputs.shards || '[]' }}
       shard_count: ${{ steps.plan.outputs.shard_count || '0' }}
+      freshness: ${{ steps.plan.outputs.freshness || '' }}
       core_sha: ${{ steps.runner-setup.outputs.core-sha }}
     steps:
       - &checkout
@@ -326,7 +325,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
-    timeout-minutes: 128
+    timeout-minutes: 148
     outputs:
       compact_due: ${{ steps.compaction.outputs.due }}
     steps:
@@ -348,14 +347,29 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: bash .github/steps/pipeline/fetch-merge-state.sh
       - name: Download data
-        id: corpus
+        id: corpus-download
         if: needs.scrape-plan.outputs.run == 'true'
         continue-on-error: true
+        timeout-minutes: 25
         uses: ./.github/actions/get-artifact
         with:
           name: data-join
           path: data
           run-id: ${{ needs.scrape-plan.outputs.resume }}
+      - name: Retry data
+        id: corpus-retry
+        if: needs.scrape-plan.outputs.run == 'true' && steps.corpus-download.outcome != 'success'
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESUME: ${{ needs.scrape-plan.outputs.resume }}
+        run: bash .github/steps/pipeline/retry-join-data.sh
+      - name: Check data
+        id: corpus
+        if: needs.scrape-plan.outputs.run == 'true'
+        continue-on-error: true
+        run: bash .github/steps/pipeline/check-join-data.sh
       - name: Download results
         id: results
         if: >-
@@ -435,6 +449,7 @@ jobs:
         if: always() && needs.scrape-plan.outputs.run == 'true'
         env:
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          CORPUS: ${{ steps.corpus.outcome }}
         run: python .github/steps/pipeline/report.py
       - name: Upload report
         id: report-upload
@@ -484,7 +499,7 @@ jobs:
     needs: [scrape-plan, merge]
     if: >-
       ${{ !cancelled() && needs.scrape-plan.outputs.run == 'true'
-      && (github.event_name == 'schedule' || github.event.inputs.chained == 'true') }}
+      && github.event.inputs.chained == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
@@ -586,6 +601,17 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           OPS_TELEGRAM_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
         run: python -m headstart.ingest.run_verdict notify --report verdict/report/report.json --previous verdict/previous/verdict.json --out verdict/now/verdict.json
+      - name: Probe
+        id: probe
+        if: always()
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+          SUBSCRIBERS_REPO: ${{ secrets.SUBSCRIBERS_REPO || vars.SUBSCRIBERS_REPO }}
+          SUBSCRIBERS_TOKEN: ${{ secrets.SUBSCRIBERS_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPS_TELEGRAM_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
+        run: pip install --quiet "huggingface_hub==1.26.1" && python -u .github/steps/uptime-probe/probe.py
       - name: Upload verdict
         if: always()
         uses: ./.github/actions/put-artifact

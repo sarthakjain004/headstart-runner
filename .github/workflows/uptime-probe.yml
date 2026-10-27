@@ -57,6 +57,9 @@ jobs:
           PYTHONPATH: src
           SUBSCRIBERS_REPO: ${{ secrets.SUBSCRIBERS_REPO || vars.SUBSCRIBERS_REPO }}
           SUBSCRIBERS_TOKEN: ${{ secrets.SUBSCRIBERS_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPS_TELEGRAM_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
         run: python -u .github/steps/uptime-probe/probe.py
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
