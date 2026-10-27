@@ -106,6 +106,7 @@ jobs:
       - name: Tests (pytest)
         env:
           HEADSTART_MCP_CONFORMANCE: required
+          HEADSTART_PAGE_VITALS: required
         run: |
           python -c "import pyarrow, lancedb"
           pytest -n auto
