@@ -7,6 +7,8 @@ run-name: >-
 
 
 on:
+  schedule:
+    - cron: "17 4 * * *"
   workflow_dispatch:
   repository_dispatch:
     types: [core-push]
@@ -35,13 +37,14 @@ jobs:
       && github.event.client_payload.sha != '0000000000000000000000000000000000000000'
       && !startsWith(github.event.client_payload.ref, 'refs/heads/sweep/')
       || github.event_name == 'workflow_dispatch'
+      || github.event_name == 'schedule'
       || github.event_name == 'push' && vars.CORE_REPO == ''
     runs-on: ubuntu-latest
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
     timeout-minutes: 5
     outputs:
-      run: ${{ steps.paths.outputs.run }}
+      run: ${{ github.event_name == 'schedule' && 'true' || steps.paths.outputs.run }}
       core_sha: ${{ steps.runner-setup.outputs.core-sha }}
     steps:
       - &checkout
@@ -69,6 +72,7 @@ jobs:
         uses: ./.github/actions/runner-setup
       - name: Check paths
         id: paths
+        if: github.event_name != 'schedule'
         uses: ./.github/actions/match-paths
         with:
           ssh-key: ${{ secrets.CORE_DEPLOY_KEY }}

@@ -328,6 +328,7 @@ jobs:
     timeout-minutes: 148
     outputs:
       compact_due: ${{ steps.compaction.outputs.due }}
+      restarted: ${{ steps.restart.outputs.restarted }}
     steps:
       - *checkout
       - id: runner-setup
@@ -398,7 +399,9 @@ jobs:
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 5
-        run: python -m headstart.ingest.indexnow_pending before --ids "$RUNNER_TEMP/served-ids.json"
+        env:
+          SPACE_URL: ${{ secrets.SPACE_URL || vars.SPACE_URL }}
+        run: python -m headstart.ingest.indexnow_pending before --ids "$RUNNER_TEMP/served-ids.json" --space "$SPACE_URL"
       - name: Sync
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         run: >-
@@ -477,9 +480,12 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python .github/steps/pipeline/check-compaction.py >> "$GITHUB_OUTPUT"
       - name: Restart Space
+        id: restart
         if: needs.scrape-plan.outputs.run == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SPACE_URL: ${{ secrets.SPACE_URL || vars.SPACE_URL }}
+          RESTART_EVERY_MIN: "90"
         run: python .github/steps/restart-space.py
       - name: Check publication
         if: always() && needs.scrape-plan.outputs.run == 'true' && steps.publish.outputs.store_valid == 'false'
@@ -518,7 +524,7 @@ jobs:
         run: bash .github/steps/pipeline/dispatch-next-run.sh
       - name: Dispatch digest
         id: digest
-        if: always() && needs.merge.result == 'success'
+        if: always() && needs.merge.result == 'success' && needs.merge.outputs.restarted == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
