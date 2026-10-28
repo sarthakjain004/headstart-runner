@@ -217,27 +217,33 @@ jobs:
         run: >-
           python -m headstart.ingest.scrape_join
           --expected-shards "${{ needs.scrape-plan.outputs.shard_count }}"
+      - name: Start ledgers
+        run: bash .github/steps/pipeline/ledger-update.sh start cost failures
       - name: Filter
         run: python -m headstart.ingest.filter_tech
+      - name: Start priority
+        run: bash .github/steps/pipeline/ledger-update.sh start priority
       - name: Update store
         run: python -m headstart.ingest.update_descriptions
+      - name: Start gaps
+        run: bash .github/steps/pipeline/ledger-update.sh start gap
       - name: Update priority
-        run: python -m headstart.ingest.update_ledgers priority
-      - name: Update costs
-        id: costs
-        continue-on-error: true
-        run: python -m headstart.ingest.update_ledgers cost
-      - name: Update failures
-        id: failures
-        continue-on-error: true
-        run: python -m headstart.ingest.update_ledgers failures
-      - name: Update gaps
-        id: gaps
-        continue-on-error: true
-        run: python -m headstart.ingest.update_ledgers gap
+        run: bash .github/steps/pipeline/ledger-update.sh wait priority
       - name: Plan embed
         id: plan
         run: bash .github/steps/pipeline/plan-embed.sh
+      - name: Update costs
+        id: costs
+        continue-on-error: true
+        run: bash .github/steps/pipeline/ledger-update.sh wait cost
+      - name: Update failures
+        id: failures
+        continue-on-error: true
+        run: bash .github/steps/pipeline/ledger-update.sh wait failures
+      - name: Update gaps
+        id: gaps
+        continue-on-error: true
+        run: bash .github/steps/pipeline/ledger-update.sh wait gap
       - name: Upload embed plan
         if: steps.plan.outputs.count != '0'
         uses: ./.github/actions/put-artifact
