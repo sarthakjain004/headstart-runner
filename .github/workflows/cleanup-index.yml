@@ -68,7 +68,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
-        run: bash .github/steps/cleanup-index/check-pipeline.sh
+        run: bash .github/steps/cleanup-index/skip-while-pipeline-runs.sh
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   cleanup:

@@ -186,9 +186,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - run: |
-          pip install "uv==$UV_VERSION"
-          uv pip install --system --torch-backend cpu -e ".[embed]" "huggingface_hub<2"
+      - run: bash .github/steps/pipeline/install-embed.sh
       - name: Cache model
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -218,33 +216,33 @@ jobs:
         run: >-
           python -m headstart.ingest.scrape_join
           --expected-shards "${{ needs.scrape-plan.outputs.shard_count }}"
-      - name: Start ledgers
-        run: bash .github/steps/pipeline/ledger-update.sh start cost failures
+      - name: Start costs and failures
+        run: bash .github/steps/pipeline/ledgers-in-background.sh start cost failures
       - name: Filter
         run: python -m headstart.ingest.filter_tech
       - name: Start priority
-        run: bash .github/steps/pipeline/ledger-update.sh start priority
+        run: bash .github/steps/pipeline/ledgers-in-background.sh start priority
       - name: Update store
         run: python -m headstart.ingest.update_descriptions
       - name: Start gaps
-        run: bash .github/steps/pipeline/ledger-update.sh start gap
+        run: bash .github/steps/pipeline/ledgers-in-background.sh start gap
       - name: Update priority
-        run: bash .github/steps/pipeline/ledger-update.sh wait priority
+        run: bash .github/steps/pipeline/ledgers-in-background.sh wait priority
       - name: Plan embed
         id: plan
         run: bash .github/steps/pipeline/plan-embed.sh
       - name: Update costs
         id: costs
         continue-on-error: true
-        run: bash .github/steps/pipeline/ledger-update.sh wait cost
+        run: bash .github/steps/pipeline/ledgers-in-background.sh wait cost
       - name: Update failures
         id: failures
         continue-on-error: true
-        run: bash .github/steps/pipeline/ledger-update.sh wait failures
+        run: bash .github/steps/pipeline/ledgers-in-background.sh wait failures
       - name: Update gaps
         id: gaps
         continue-on-error: true
-        run: bash .github/steps/pipeline/ledger-update.sh wait gap
+        run: bash .github/steps/pipeline/ledgers-in-background.sh wait gap
       - name: Upload embed plan
         if: steps.plan.outputs.count != '0'
         uses: ./.github/actions/put-artifact
@@ -342,9 +340,7 @@ jobs:
         with:
           python-version: "3.12"
       - if: needs.scrape-plan.outputs.run == 'true'
-        run: |
-          pip install "uv==$UV_VERSION"
-          uv pip install --system --torch-backend cpu -e ".[embed]" "huggingface_hub<2"
+        run: bash .github/steps/pipeline/install-embed.sh
       - name: Cache key
         id: fragments
         if: needs.scrape-plan.outputs.run == 'true'

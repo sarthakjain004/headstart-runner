@@ -115,7 +115,7 @@ jobs:
       - name: Embed baseline
         run: python -m headstart.ingest.embed_run --source data/jobs/tech --outdir data/embeddings/mono
       - name: Plan
-        run: python -m headstart.ingest.embed_plan --max-shards 3 --target-seconds 20
+        run: python -m headstart.ingest.embed_plan --lanes 3 --target-seconds 20
       - name: Embed shards
         run: bash .github/steps/pipeline-smoke/embed-shards.sh
       - name: Merge
