@@ -359,7 +359,7 @@ jobs:
         if: needs.scrape-plan.outputs.run == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: bash .github/steps/pipeline/fetch-merge-state.sh
+        run: bash .github/steps/pipeline/fetch-merge-state.sh start
       - name: Download data
         id: corpus-download
         if: needs.scrape-plan.outputs.run == 'true'
@@ -395,6 +395,9 @@ jobs:
           pattern: data-embed-[0-9]*
           path: data/embeddings/fragments
           run-id: ${{ needs.scrape-plan.outputs.resume }}
+      - name: Await state
+        if: needs.scrape-plan.outputs.run == 'true'
+        run: bash .github/steps/pipeline/fetch-merge-state.sh wait
       - name: Merge
         if: needs.scrape-plan.outputs.run == 'true' && steps.corpus.outcome == 'success'
         run: python -m headstart.ingest.embed_merge ${{ needs.scrape-plan.outputs.resume != '' && format('--expect-shards {0} --strict-shards', needs.scrape-plan.outputs.resume_fragments) || format('--expect-shards {0}', needs.join.outputs.shard_count) }}
