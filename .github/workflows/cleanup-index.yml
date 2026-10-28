@@ -35,8 +35,10 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      actions: read
     outputs:
       core_sha: ${{ steps.runner-setup.outputs.core-sha }}
+      skip: ${{ steps.pipeline.outputs.skip }}
     steps:
       - &checkout
         name: Checkout
@@ -61,10 +63,17 @@ jobs:
           git checkout --quiet --detach FETCH_HEAD
       - id: runner-setup
         uses: ./.github/actions/runner-setup
+      - name: Check pipeline
+        id: pipeline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: bash .github/steps/cleanup-index/check-pipeline.sh
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   cleanup:
     needs: window
+    if: needs.window.outputs.skip != 'true'
     concurrency:
       group: dataset-writer
       cancel-in-progress: false

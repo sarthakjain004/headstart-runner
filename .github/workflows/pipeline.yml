@@ -547,7 +547,7 @@ jobs:
         uses: ./.github/actions/runner-teardown
   request-compaction:
     needs: [scrape-plan, merge]
-    if: ${{ !cancelled() && needs.merge.outputs.compact_due == 'true' }}
+    if: ${{ !cancelled() && needs.merge.outputs.compact_due != '' }}
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
@@ -563,6 +563,7 @@ jobs:
       - name: Dispatch compaction
         env:
           GH_TOKEN: ${{ github.token }}
+          DUE: ${{ needs.merge.outputs.compact_due }}
         run: bash .github/steps/pipeline/dispatch-compaction.sh
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
