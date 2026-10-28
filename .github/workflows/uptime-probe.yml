@@ -3,7 +3,12 @@ name: uptime-probe
 on:
   schedule:
     - cron: "7 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      after:
+        description: "Wait first for a Space boot at or after this ISO time (the restart)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -24,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CORE_REF: ${{ github.event.client_payload.sha || (vars.CORE_REPO == '' && github.sha) || 'main' }}
-    timeout-minutes: 10
+    timeout-minutes: 35
     steps:
       - name: Checkout
         shell: bash
@@ -48,6 +53,13 @@ jobs:
           git checkout --quiet --detach FETCH_HEAD
       - id: runner-setup
         uses: ./.github/actions/runner-setup
+      - name: Await boot
+        if: inputs.after != ''
+        continue-on-error: true
+        timeout-minutes: 25
+        uses: ./.github/actions/await-boot
+        with:
+          after: ${{ inputs.after }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"

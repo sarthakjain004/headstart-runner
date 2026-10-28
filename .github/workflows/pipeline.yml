@@ -572,7 +572,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
-    timeout-minutes: 30
+      AFTER: ${{ needs.merge.outputs.restarted_at }}
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: write
@@ -580,14 +581,6 @@ jobs:
       - *checkout
       - id: runner-setup
         uses: ./.github/actions/runner-setup
-      - name: Await boot
-        id: boot
-        continue-on-error: true
-        timeout-minutes: 25
-        env:
-          PYTHONPATH: src
-          AFTER: ${{ needs.merge.outputs.restarted_at }}
-        run: python3 -m headstart.space_boot wait --after "$AFTER" --timeout-min 20
       - name: Dispatch digest
         id: dispatch
         continue-on-error: true
@@ -599,7 +592,36 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run search-quality.yml -R "$GITHUB_REPOSITORY"
+        run: gh workflow run search-quality.yml -R "$GITHUB_REPOSITORY" -f after="$AFTER"
+      - name: Outcomes
+        if: always() && steps.runner-setup.outcome == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/outcomes
+        with:
+          steps: ${{ toJSON(steps) }}
+      - if: always() && steps.runner-setup.outcome == 'success'
+        uses: ./.github/actions/runner-teardown
+  probe:
+    needs: [scrape-plan, merge]
+    if: ${{ !cancelled() && needs.scrape-plan.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    env:
+      CORE_REF: ${{ needs.scrape-plan.outputs.core_sha }}
+      AFTER: ${{ needs.merge.outputs.restarted == 'true' && needs.merge.outputs.restarted_at || '' }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - *checkout
+      - id: runner-setup
+        uses: ./.github/actions/runner-setup
+      - name: Dispatch probe
+        id: dispatch
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run uptime-probe.yml -R "$GITHUB_REPOSITORY" -f after="$AFTER"
       - name: Outcomes
         if: always() && steps.runner-setup.outcome == 'success'
         continue-on-error: true
@@ -609,7 +631,7 @@ jobs:
       - if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/runner-teardown
   notify:
-    needs: [scrape-plan, scrape, join, embed, merge, chain, request-compaction, digest]
+    needs: [scrape-plan, scrape, join, embed, merge, chain, request-compaction, digest, probe]
     if: ${{ always() && needs.scrape-plan.outputs.run != 'false' }}
     runs-on: ubuntu-24.04
     env:
@@ -656,18 +678,6 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           OPS_TELEGRAM_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
         run: python -m headstart.ingest.run_verdict notify --report verdict/report/report.json --previous verdict/previous/verdict.json --out verdict/now/verdict.json
-      - name: Probe
-        id: probe
-        if: always()
-        continue-on-error: true
-        env:
-          PYTHONPATH: src
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SUBSCRIBERS_REPO: ${{ secrets.SUBSCRIBERS_REPO || vars.SUBSCRIBERS_REPO }}
-          SUBSCRIBERS_TOKEN: ${{ secrets.SUBSCRIBERS_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          OPS_TELEGRAM_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
-        run: pip install --quiet "huggingface_hub==1.26.1" && python -u .github/steps/uptime-probe/probe.py
       - name: Upload verdict
         if: always()
         uses: ./.github/actions/put-artifact
