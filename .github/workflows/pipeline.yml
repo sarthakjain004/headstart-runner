@@ -118,15 +118,15 @@ jobs:
       - *checkout
       - id: runner-setup
         uses: ./.github/actions/runner-setup
+      - name: Network setup
+        id: network
+        continue-on-error: true
+        timeout-minutes: 1
+        run: bash .github/steps/pipeline/network-setup-start.sh
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
       - run: pip install -e ".[scrape]"
-      - name: Network setup
-        id: network
-        continue-on-error: true
-        timeout-minutes: 10
-        run: bash .github/steps/pipeline/network-setup.sh
       - name: Download plan
         id: plan-download
         continue-on-error: true
@@ -142,6 +142,7 @@ jobs:
       - name: Scrape
         env:
           SHARD: ${{ matrix.shard }}
+          HEADSTART_WORKERS: "32"
         run: bash .github/steps/pipeline/scrape.sh
         timeout-minutes: 81
       - name: Filter
