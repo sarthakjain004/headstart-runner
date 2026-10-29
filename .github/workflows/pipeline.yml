@@ -142,7 +142,7 @@ jobs:
       - name: Scrape
         env:
           SHARD: ${{ matrix.shard }}
-          HEADSTART_WORKERS: "32"
+          HEADSTART_WORKERS: "16"
         run: bash .github/steps/pipeline/scrape.sh
         timeout-minutes: 81
       - name: Filter
