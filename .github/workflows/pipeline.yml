@@ -279,7 +279,7 @@ jobs:
     timeout-minutes: 198
     strategy:
       fail-fast: false
-      max-parallel: 15
+      max-parallel: 18
       matrix:
         shard: ${{ fromJson(needs.join.outputs.shards) }}
     steps:
@@ -536,6 +536,12 @@ jobs:
       - *checkout
       - id: runner-setup
         uses: ./.github/actions/runner-setup
+      - name: Dispatch extra-scrape
+        id: extra
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steps/pipeline/dispatch-extra-scrape.sh
       - name: Dispatch next run
         env:
           GH_TOKEN: ${{ github.token }}
@@ -682,6 +688,8 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           OPS_TELEGRAM_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
+          OPS_ISSUES_TOKEN: ${{ secrets.OPS_ISSUES_TOKEN }}
+          OPS_ISSUES_REPO: ${{ vars.CORE_REPO || github.repository }}
         run: python -m headstart.ingest.run_verdict notify --report verdict/report/report.json --previous verdict/previous/verdict.json --out verdict/now/verdict.json
       - name: Upload verdict
         if: always()

@@ -143,7 +143,7 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           SHARDS: ${{ needs.plan.outputs.count }}
-        run: 'python -u scripts/validate/ledger_refresh.py probe --shard "$SHARD" --shards "$SHARDS"'
+        run: bash .github/steps/ledger-refresh/probe.sh
       - name: Upload
         if: always() && steps.runner-setup.outcome == 'success'
         uses: ./.github/actions/put-artifact
