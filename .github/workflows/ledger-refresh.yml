@@ -174,19 +174,23 @@ jobs:
           pattern: part-*
           path: ${{ runner.temp }}/parts
       - name: Merge
+        id: merge
         run: 'python scripts/validate/ledger_refresh.py merge "$RUNNER_TEMP/parts"'
+      - name: Follow
+        timeout-minutes: 120
+        run: 'python -u scripts/validate/ledger_refresh.py followups --held held.txt'
       - name: Keep
+        if: always() && steps.merge.outcome == 'success'
         uses: ./.github/actions/put-artifact
         with:
           name: ledgers
-          path: data/validate/liveness
+          path: |
+            data/validate
+            held.txt
           retention-days: 14
-      - name: Follow
-        timeout-minutes: 120
-        run: 'python -u scripts/validate/ledger_refresh.py followups --held "$RUNNER_TEMP/held.txt"'
       - name: Land
         env:
-          HELD: ${{ runner.temp }}/held.txt
+          HELD: held.txt
           REPOSITORY: ${{ vars.CORE_REPO || github.repository }}
           CORE_LEDGER_TOKEN: ${{ secrets.CORE_LEDGER_TOKEN }}
         run: bash .github/steps/ledger-refresh/land.sh
