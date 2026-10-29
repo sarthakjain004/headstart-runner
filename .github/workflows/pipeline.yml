@@ -126,7 +126,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - run: pip install -e ".[scrape]"
+      - run: bash .github/steps/pipeline/install-scrape.sh
       - name: Download plan
         id: plan-download
         continue-on-error: true
