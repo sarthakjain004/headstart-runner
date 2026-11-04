@@ -68,6 +68,11 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python -m headstart.ingest.state_fetch 'data/state/company_directory.json' 'data/state/board_priority.csv' 'data/logos/*'
+      - name: Fetch employer logo URLs
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python -m headstart.ingest.state_fetch 'data/state/employer_logo_urls.tsv'
       - name: Network setup
         continue-on-error: true
         timeout-minutes: 10
