@@ -14,6 +14,7 @@ on:
       - "src/headstart/embedding_conventions.py"
       - "src/headstart/llm_router.py"
       - "src/headstart/log.py"
+      - "src/headstart/served_table.py"
       - "src/headstart/snapshot_parts.py"
       - "src/headstart/alerts/__init__.py"
       - "src/headstart/alerts/access.py"
@@ -43,9 +44,11 @@ on:
       - "src/headstart/boards/company_ref.py"
       - "src/headstart/boards/employer_kind.py"
       - "src/headstart/jobs/__init__.py"
+      - "src/headstart/jobs/description_teaser.py"
       - "src/headstart/jobs/experience.py"
       - "src/headstart/jobs/job.py"
       - "src/headstart/jobs/location.py"
+      - "src/headstart/jobs/plain_text.py"
       - "src/headstart/jobs/requisition_copies.py"
       - "src/headstart/jobs/salary.py"
       - "src/headstart/jobs/stated_end_date.py"
@@ -130,6 +133,7 @@ jobs:
             src/headstart/embedding_conventions.py
             src/headstart/llm_router.py
             src/headstart/log.py
+            src/headstart/served_table.py
             src/headstart/snapshot_parts.py
             src/headstart/alerts/__init__.py
             src/headstart/alerts/access.py
@@ -159,9 +163,11 @@ jobs:
             src/headstart/boards/company_ref.py
             src/headstart/boards/employer_kind.py
             src/headstart/jobs/__init__.py
+            src/headstart/jobs/description_teaser.py
             src/headstart/jobs/experience.py
             src/headstart/jobs/job.py
             src/headstart/jobs/location.py
+            src/headstart/jobs/plain_text.py
             src/headstart/jobs/requisition_copies.py
             src/headstart/jobs/salary.py
             src/headstart/jobs/stated_end_date.py
