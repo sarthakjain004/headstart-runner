@@ -68,7 +68,7 @@ jobs:
           git checkout --quiet --detach FETCH_HEAD
       - id: runner-setup
         uses: ./.github/actions/runner-setup
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - name: Gate
@@ -123,7 +123,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 1
         run: bash .github/steps/pipeline/network-setup-start.sh
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - run: bash .github/steps/pipeline/install-scrape.sh
@@ -183,7 +183,7 @@ jobs:
       - *checkout
       - id: runner-setup
         uses: ./.github/actions/runner-setup
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - run: bash .github/steps/pipeline/install-embed.sh
@@ -286,7 +286,7 @@ jobs:
       - *checkout
       - id: runner-setup
         uses: ./.github/actions/runner-setup
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - run: bash .github/steps/pipeline/install-embed.sh
@@ -343,7 +343,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RESUME: ${{ needs.scrape-plan.outputs.resume }}
         run: bash .github/steps/pipeline/download-join-data.sh start
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         if: needs.scrape-plan.outputs.run == 'true'
         with:
           python-version: "3.12"
@@ -661,7 +661,7 @@ jobs:
       - *checkout
       - id: runner-setup
         uses: ./.github/actions/runner-setup
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - name: Find previous
