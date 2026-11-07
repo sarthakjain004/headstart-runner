@@ -206,12 +206,6 @@ jobs:
           path: data/scrape/fragments
       - name: Await state
         run: bash .github/steps/pipeline/fetch-join-state.sh wait
-      - name: Fetch extra results
-        id: extra
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash .github/steps/pipeline/fetch-extra-fragment.sh
       - name: Join
         run: >-
           python -m headstart.ingest.scrape_join
@@ -541,12 +535,6 @@ jobs:
       - *checkout
       - id: runner-setup
         uses: ./.github/actions/runner-setup
-      - name: Dispatch extra-scrape
-        id: extra
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash .github/steps/pipeline/dispatch-extra-scrape.sh
       - name: Dispatch next run
         env:
           GH_TOKEN: ${{ github.token }}

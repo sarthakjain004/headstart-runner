@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: logos
@@ -77,11 +76,6 @@ jobs:
         continue-on-error: true
         timeout-minutes: 10
         run: bash .github/steps/pipeline/network-setup.sh
-      - name: Fetch extra logos
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash .github/steps/newest-artifact.sh data-scrape-extra data/scrape/extra-fragment extra-scrape.yml
       - name: Sweep
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
